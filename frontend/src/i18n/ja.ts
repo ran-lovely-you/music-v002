@@ -1,0 +1,117 @@
+// 日本語UI文言。将来英語対応する場合は同じキー構造で en.ts を追加し、
+// i18n/index.ts で言語切り替えできるようにする。
+export const ja = {
+  appTitle: "認知機能サポートBGM AI",
+  appSubtitle: "高齢者向け 認知機能サポート・リラックスBGM制作ソフトウェア",
+  nav: {
+    next: "次へ",
+    back: "戻る",
+    startOver: "はじめからやり直す",
+  },
+  home: {
+    heading: "ようこそ",
+    lead: "落ち着いて聴けるBGMを、かんたんな操作で作成できます。",
+    startButton: "新しいBGMを作る",
+    projectsButton: "保存したBGMを見る",
+    disclaimer:
+      "本ソフトウェアで作成する音楽は、認知機能サポート・リラックス・穏やかな生活環境づくりを目的とした音響コンテンツです。医学的な治療・予防効果を保証するものではありません。",
+  },
+  steps: {
+    type: "BGMタイプ選択",
+    mood: "雰囲気選択",
+    instrument: "楽器選択",
+    nature: "自然音選択",
+    duration: "時間・テンポ設定",
+    prompt: "AIプロンプト確認",
+    generating: "BGM生成中",
+    soundcheck: "音響チェック",
+    preview: "プレビュー",
+    save: "保存・書き出し",
+  },
+  typeSelect: {
+    heading: "どんなBGMを作りますか？",
+    lead: "作りたい場面に近いものを選んでください。",
+  },
+  moodSelect: {
+    heading: "音楽の雰囲気",
+    lead: "気になるものを選んでください（複数選択可）。未選択の場合はおすすめの雰囲気を使用します。",
+  },
+  instrumentSelect: {
+    heading: "楽器",
+    lead: "使いたい楽器を選んでください（複数選択可）。",
+  },
+  natureSelect: {
+    heading: "自然音",
+    lead: "重ねたい自然音を選んでください（複数選択可、なしでも構いません）。",
+  },
+  durationSelect: {
+    heading: "再生時間・テンポ",
+    lead: "BGMの長さとテンポを選んでください。",
+    duration: "再生時間",
+    tempo: "テンポ",
+    advanced: "詳細設定",
+    bpm: "BPM（数値指定・任意）",
+    provider: "音楽生成方法",
+    providerHelp: "APIキー未設定の場合は「procedural（内蔵エンジン）」をご利用ください。",
+  },
+  promptPreview: {
+    heading: "AIプロンプトを確認",
+    lead: "設定内容から自動生成されたプロンプトです。内容を確認して生成に進んでください。",
+    short: "Short Prompt",
+    detailed: "Detailed Prompt",
+    professional: "Professional Prompt",
+    negative: "Negative Prompt（望ましくない要素）",
+    generateButton: "この内容でBGMを生成する",
+  },
+  generating: {
+    heading: "BGMを生成しています…",
+    lead: "しばらくお待ちください。長い時間を指定した場合は数分かかることがあります。",
+  },
+  soundCheck: {
+    heading: "音響チェック結果",
+    lead: "高齢者の方が聴きやすいかどうかを自動でチェックしました。",
+    overall: "総合判定",
+    score: "BGM品質スコア",
+    scoreOutOf: "/ 100",
+  },
+  preview: {
+    heading: "プレビュー再生",
+    lead: "実際の音を確認してみましょう。",
+    play: "再生",
+    pause: "一時停止",
+    stop: "停止",
+    loop: "ループ再生",
+    volume: "音量",
+  },
+  save: {
+    heading: "保存・書き出し",
+    lead: "BGMをプロジェクトとして保存したり、音声ファイルとして書き出したりできます。",
+    titleLabel: "タイトル",
+    saveButton: "プロジェクトとして保存",
+    saved: "保存しました。",
+    exportWav: "WAVを書き出す（24bit/48kHz）",
+    exportMp3: "MP3を書き出す（320kbps）",
+    exportFlac: "FLACを書き出す",
+    youtubeHeading: "YouTube用メタデータ",
+    youtubeButton: "YouTube用メタデータを生成",
+  },
+  projects: {
+    heading: "保存したBGM",
+    empty: "保存されたBGMはまだありません。",
+    delete: "削除",
+    backHome: "ホームに戻る",
+  },
+  common: {
+    loading: "読み込み中…",
+    error: "エラーが発生しました",
+    retry: "再試行",
+    close: "閉じる",
+  },
+  safetyStatusLabel: {
+    green: "🟢 推奨",
+    yellow: "🟡 注意",
+    red: "🔴 要調整",
+  },
+} as const;
+
+export type Strings = typeof ja;
