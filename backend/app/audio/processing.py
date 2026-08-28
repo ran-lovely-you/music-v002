@@ -34,21 +34,25 @@ def normalize_peak(audio: np.ndarray, target_dbfs: float = -3.0) -> np.ndarray:
 
 
 def fade_in(audio: np.ndarray, sr: int, seconds: float) -> np.ndarray:
+    """フェードインを適用する。呼び出し側の配列を直接書き換える(in-place)。
+
+    process_master 内で連鎖的に呼ばれる前提のため、毎回フルサイズのコピーを
+    作らないようにしている（長時間BGMでのピークメモリ削減のため）。
+    """
     n = audio.shape[-1]
     fn = max(1, min(n, int(seconds * sr)))
-    out = audio.copy()
-    window = np.linspace(0.0, 1.0, fn)
-    out[..., :fn] *= window
-    return out
+    window = np.linspace(0.0, 1.0, fn, dtype=audio.dtype)
+    audio[..., :fn] *= window
+    return audio
 
 
 def fade_out(audio: np.ndarray, sr: int, seconds: float) -> np.ndarray:
+    """フェードアウトを適用する（in-place。理由は fade_in を参照）。"""
     n = audio.shape[-1]
     fn = max(1, min(n, int(seconds * sr)))
-    out = audio.copy()
-    window = np.linspace(1.0, 0.0, fn)
-    out[..., -fn:] *= window
-    return out
+    window = np.linspace(1.0, 0.0, fn, dtype=audio.dtype)
+    audio[..., -fn:] *= window
+    return audio
 
 
 def gentle_compression(
@@ -97,7 +101,8 @@ def gentle_compression(
     block_centers = (np.arange(n_blocks) + 0.5) * hop
     full_idx = np.arange(n)
     gain_full = np.interp(full_idx, block_centers, gain_blocks, left=gain_blocks[0], right=gain_blocks[-1])
-    return audio * gain_full
+    audio *= gain_full  # in-place（呼び出し側のバッファを直接書き換える。理由は fade_in を参照）
+    return audio
 
 
 def eq_elderly_safe(
@@ -108,31 +113,58 @@ def eq_elderly_safe(
     low_shelf_freq: float = 65.0,
     low_shelf_gain_db: float = -3.0,
 ) -> np.ndarray:
-    """不快な高音（鋭いシャリつき）と過度な低音の両方を穏やかに抑えるEQ。"""
+    """不快な高音（鋭いシャリつき）と過度な低音の両方を穏やかに抑えるEQ。
+
+    呼び出し側の配列を直接書き換える(in-place)。process_master の連鎖呼び出しの中で
+    毎回フルサイズのコピーを作らないようにし、長時間BGMでのピークメモリを抑える。
+    """
     nyq = sr / 2.0
-    out = audio.copy()
 
     hp_cut = min(high_shelf_freq, nyq * 0.95) / nyq
     sos_hp = sps.butter(2, hp_cut, btype="highpass", output="sos")
-    high_part = sps.sosfiltfilt(sos_hp, out, axis=-1)
+    high_part = sps.sosfiltfilt(sos_hp, audio, axis=-1)
     gain_lin_high = 10 ** (high_shelf_gain_db / 20)
-    out = out - high_part * (1 - gain_lin_high)
+    high_part *= 1 - gain_lin_high
+    audio -= high_part
+    del high_part
 
     lp_cut = max(low_shelf_freq, 5.0) / nyq
     sos_lp = sps.butter(2, lp_cut, btype="lowpass", output="sos")
-    low_part = sps.sosfiltfilt(sos_lp, out, axis=-1)
+    low_part = sps.sosfiltfilt(sos_lp, audio, axis=-1)
     gain_lin_low = 10 ** (low_shelf_gain_db / 20)
-    out = out - low_part * (1 - gain_lin_low)
+    low_part *= 1 - gain_lin_low
+    audio -= low_part
+    del low_part
 
-    return out
+    return audio
 
 
 def stereo_width(audio: np.ndarray, width: float = 1.05) -> np.ndarray:
-    mid = (audio[0] + audio[1]) / 2.0
-    side = (audio[0] - audio[1]) / 2.0 * width
-    left = mid + side
-    right = mid - side
-    return np.stack([left, right])
+    """ステレオ幅を調整する（in-place。mid/sideはモノラルの一時配列のみで完結させ、
+    フルサイズのステレオ配列を新規に確保しない）。"""
+    mid = (audio[0] + audio[1]) * 0.5
+    side = (audio[0] - audio[1]) * (0.5 * width)
+    audio[0] = mid + side
+    audio[1] = mid - side
+    return audio
+
+
+def _longest_true_run(mask: np.ndarray) -> int:
+    """boolean配列の中で連続してTrueが続く最大長を求める（完全にベクトル化）。
+
+    120分クラスの長時間BGMではサンプル数が3億を超えるため、Pythonのforループで
+    1サンプルずつ判定すると非現実的な時間がかかる。差分の符号が変わる位置だけを
+    numpyで検出することでO(N)のベクトル演算のみで完結させている。
+    """
+    if mask.size == 0:
+        return 0
+    padded = np.concatenate(([False], mask, [False]))
+    diff = np.diff(padded.astype(np.int8))
+    starts = np.flatnonzero(diff == 1)
+    ends = np.flatnonzero(diff == -1)
+    if starts.size == 0:
+        return 0
+    return int((ends - starts).max())
 
 
 def detect_silence(audio: np.ndarray, sr: int, threshold_db: float = -50.0) -> dict:
@@ -141,14 +173,7 @@ def detect_silence(audio: np.ndarray, sr: int, threshold_db: float = -50.0) -> d
     is_silent = mono < threshold
     silence_ratio = float(np.mean(is_silent)) if is_silent.size else 1.0
 
-    longest_run = 0
-    current_run = 0
-    for silent in is_silent:
-        if silent:
-            current_run += 1
-            longest_run = max(longest_run, current_run)
-        else:
-            current_run = 0
+    longest_run = _longest_true_run(is_silent)
     longest_silence_sec = longest_run / sr if sr else 0.0
 
     return {
@@ -159,18 +184,22 @@ def detect_silence(audio: np.ndarray, sr: int, threshold_db: float = -50.0) -> d
 
 
 def make_loopable(audio: np.ndarray, sr: int, crossfade_sec: float = 2.0) -> np.ndarray:
-    """終端を始端へなじませ、ループ再生しても違和感が出にくいようにする。"""
+    """終端を始端へなじませ、ループ再生しても違和感が出にくいようにする。
+
+    書き換えるのは末尾のクロスフェード区間のみのため、フルサイズのコピーは作らない
+    （in-place。head側はクロスフェード長ぶんの小さなコピーのみ）。
+    """
     n = audio.shape[-1]
     cf = min(int(crossfade_sec * sr), n // 4)
     if cf <= 0:
         return audio
-    out = audio.copy()
-    head = audio[..., :cf]
+    head = audio[..., :cf].copy()
     tail = audio[..., -cf:]
-    fade_in_w = np.linspace(0.0, 1.0, cf)
-    fade_out_w = np.linspace(1.0, 0.0, cf)
-    out[..., -cf:] = tail * fade_out_w + head * fade_in_w
-    return out
+    fade_in_w = np.linspace(0.0, 1.0, cf, dtype=audio.dtype)
+    fade_out_w = np.linspace(1.0, 0.0, cf, dtype=audio.dtype)
+    tail *= fade_out_w
+    tail += head * fade_in_w
+    return audio
 
 
 def measure_lufs(audio: np.ndarray, sr: int) -> float | None:
@@ -194,8 +223,8 @@ def loudness_normalize(audio: np.ndarray, sr: int, target_lufs: float = -18.0) -
         return audio, current
     peak = float(np.max(np.abs(normalized))) if normalized.size else 0.0
     if peak > 0.98:
-        normalized = normalized / peak * 0.98
-    return normalized.astype(np.float32), current
+        normalized *= 0.98 / peak
+    return normalized.astype(np.float32, copy=False), current
 
 
 def _true_peak_limit(audio: np.ndarray, threshold: float = 0.97) -> np.ndarray:

@@ -36,7 +36,9 @@ class _PipelineOutput:
 def _run_processing_pipeline(raw_audio: np.ndarray, raw_sr: int, req: GenerateRequest) -> _PipelineOutput:
     """音響処理〜分析〜スコアリングまでのCPU律速処理。スレッドプール上で実行する想定。"""
     audio, sr = ensure_sample_rate(raw_audio, raw_sr, 48000)
+    del raw_audio  # 長時間BGMでは、不要になった参照を早めに手放してピークメモリを抑える
     processed = process_master(audio, sr)
+    del audio
     analysis = analyze_audio(processed.audio, processed.sr)
     safety = run_safety_check(analysis)
     score = compute_score(analysis, safety, req)

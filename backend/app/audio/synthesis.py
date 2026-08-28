@@ -194,7 +194,8 @@ def compose_music_layer(req: GenerateRequest, sr: int, rng: random.Random) -> np
     root_midi = 60  # C4 を中心に、耳に優しい中音域を基本とする
 
     n_samples = int(duration * sr)
-    buf = np.zeros((2, n_samples), dtype=np.float64)
+    # float32で確保する（120分の長時間BGMではfloat64だとメモリ使用量が倍増するため）
+    buf = np.zeros((2, n_samples), dtype=np.float32)
 
     beat_sec = 60.0 / bpm
     chord_beats = 8  # 和音の変化をゆっくりにし、落ち着いた印象にする
@@ -260,7 +261,8 @@ def compose_music_layer(req: GenerateRequest, sr: int, rng: random.Random) -> np
 def _white_noise(n: int, rng: random.Random) -> np.ndarray:
     seed = rng.randint(0, 2**31 - 1)
     local_rng = np.random.default_rng(seed)
-    return local_rng.standard_normal(n)
+    # float32で生成する（長時間BGMではfloat64だと自然音レイヤーのメモリ使用量が倍増するため）
+    return local_rng.standard_normal(n).astype(np.float32)
 
 
 def _bandpass_noise(n: int, sr: int, low: float, high: float, rng: random.Random) -> np.ndarray:
@@ -269,7 +271,7 @@ def _bandpass_noise(n: int, sr: int, low: float, high: float, rng: random.Random
     low = max(10.0, min(low, nyq - 100))
     high = max(low + 50.0, min(high, nyq - 10))
     sos = sps.butter(4, [low / nyq, high / nyq], btype="bandpass", output="sos")
-    return sps.sosfiltfilt(sos, noise)
+    return sps.sosfiltfilt(sos, noise).astype(np.float32)
 
 
 def _lowpass_noise(n: int, sr: int, cutoff: float, rng: random.Random) -> np.ndarray:
@@ -277,7 +279,7 @@ def _lowpass_noise(n: int, sr: int, cutoff: float, rng: random.Random) -> np.nda
     nyq = sr / 2.0
     cutoff = max(20.0, min(cutoff, nyq - 10))
     sos = sps.butter(4, cutoff / nyq, btype="lowpass", output="sos")
-    return sps.sosfiltfilt(sos, noise)
+    return sps.sosfiltfilt(sos, noise).astype(np.float32)
 
 
 def _slow_envelope(n: int, sr: int, rate_hz: float, depth: float, base: float, rng: random.Random) -> np.ndarray:
@@ -288,15 +290,15 @@ def _slow_envelope(n: int, sr: int, rate_hz: float, depth: float, base: float, r
     ctrl = local_rng.uniform(base - depth, base + depth, n_ctrl)
     x_ctrl = np.linspace(0, n, n_ctrl)
     x_full = np.arange(n)
-    return np.clip(np.interp(x_full, x_ctrl, ctrl), 0.0, 1.5)
+    return np.clip(np.interp(x_full, x_ctrl, ctrl), 0.0, 1.5).astype(np.float32)
 
 
 def _fade_edges(sig: np.ndarray, sr: int, seconds: float = 1.5) -> np.ndarray:
     n = sig.shape[-1]
     fade_n = max(1, min(n // 2, int(seconds * sr)))
-    window = np.ones(n)
-    window[:fade_n] = np.linspace(0, 1, fade_n)
-    window[-fade_n:] = np.linspace(1, 0, fade_n)
+    window = np.ones(n, dtype=np.float32)
+    window[:fade_n] = np.linspace(0, 1, fade_n, dtype=np.float32)
+    window[-fade_n:] = np.linspace(1, 0, fade_n, dtype=np.float32)
     return sig * window
 
 
@@ -326,7 +328,7 @@ def generate_wind(n: int, sr: int, rng: random.Random) -> np.ndarray:
 
 
 def generate_birds(n: int, sr: int, rng: random.Random) -> np.ndarray:
-    sig = np.zeros(n)
+    sig = np.zeros(n, dtype=np.float32)
     duration = n / sr
     t_cursor = rng.uniform(1.0, 4.0)
     while t_cursor < duration - 0.5:
@@ -367,10 +369,16 @@ def generate_campfire(n: int, sr: int, rng: random.Random) -> np.ndarray:
 
 
 def generate_forest(n: int, sr: int, rng: random.Random) -> np.ndarray:
-    wind = generate_wind(n, sr, rng) * 0.6
-    birds = generate_birds(n, sr, rng)
-    leaves = _bandpass_noise(n, sr, 2500, 8000, rng) * _slow_envelope(n, sr, 0.2, 0.15, 0.25, rng) * 0.15
-    return wind + birds + leaves
+    # 複数の全長バッファを同時に保持しないよう、1つのバッファへ逐次加算する
+    # （長時間BGMではここが特にメモリを消費しやすいため）
+    sig = generate_wind(n, sr, rng)
+    sig *= 0.6
+    sig += generate_birds(n, sr, rng)
+    leaves = _bandpass_noise(n, sr, 2500, 8000, rng)
+    leaves *= _slow_envelope(n, sr, 0.2, 0.15, 0.25, rng)
+    leaves *= 0.15
+    sig += leaves
+    return sig
 
 
 NATURE_GENERATORS = {
@@ -384,11 +392,18 @@ NATURE_GENERATORS = {
 }
 
 
-def compose_nature_layer(nature_sounds: list[NatureSound], n_samples: int, sr: int, rng: random.Random) -> np.ndarray:
-    stereo = np.zeros((2, n_samples))
+def add_nature_layer_into(
+    buf: np.ndarray, nature_sounds: list[NatureSound], sr: int, rng: random.Random, gain: float = 1.0
+) -> None:
+    """自然音を別バッファに作ってから合成するのではなく、既存のバッファへ直接加算する。
+
+    120分等の長時間BGMでは、全長ぶんの一時配列を何枚も同時に保持すると
+    メモリを大量に消費するため、共有バッファへの逐次加算でピークメモリを抑える。
+    """
     if not nature_sounds:
-        return stereo
-    gain_each = 1.0 / math.sqrt(len(nature_sounds))
+        return
+    n_samples = buf.shape[1]
+    gain_each = gain / math.sqrt(len(nature_sounds))
     for ns in nature_sounds:
         gen = NATURE_GENERATORS.get(ns)
         if gen is None:
@@ -396,11 +411,9 @@ def compose_nature_layer(nature_sounds: list[NatureSound], n_samples: int, sr: i
         mono = _fade_edges(gen(n_samples, sr, rng), sr)
         # わずかな左右差をつけて自然な広がりを持たせる（自然音は完全モノラルにしない）
         delay = int(sr * rng.uniform(0.0, 0.02))
-        left = mono
         right = np.roll(mono, delay) if delay > 0 else mono
-        stereo[0] += left * gain_each
-        stereo[1] += right * gain_each
-    return stereo
+        buf[0] += mono * gain_each
+        buf[1] += right * gain_each
 
 
 # ---------------------------------------------------------------------------
@@ -426,16 +439,17 @@ def generate_raw_bgm(req: GenerateRequest, seed: int | None = None) -> tuple[np.
     preset = get_preset(req.bgm_type)
     nature_sounds = req.nature_sounds or preset.default_nature_sounds
 
-    music = compose_music_layer(req, sr, rng)
-    n_samples = music.shape[1]
-    nature = compose_nature_layer(nature_sounds, n_samples, sr, rng)
+    # 音楽レイヤーのバッファをそのまま最終ミックスバッファとして使い回す
+    # （別バッファに自然音を作って後から合成すると、長時間BGMでピークメモリが倍増するため）
+    mix = compose_music_layer(req, sr, rng)
+    mix *= 0.85
+    add_nature_layer_into(mix, nature_sounds, sr, rng, gain=0.9)
 
-    mix = music * 0.85 + nature * 0.9
     mix = _fade_edges(mix, sr, seconds=min(3.0, req.duration_sec / 8))
     mix = _soft_limit(mix, threshold=0.85)
 
     peak = float(np.max(np.abs(mix))) if mix.size else 0.0
     if peak > 1e-9:
-        mix = mix / peak * 0.8  # -1.9dBFS 程度の余裕を残して後段の音響処理に渡す
+        mix *= 0.8 / peak  # -1.9dBFS 程度の余裕を残して後段の音響処理に渡す
 
-    return mix.astype(np.float32), sr
+    return mix.astype(np.float32, copy=False), sr
