@@ -105,6 +105,36 @@ def gentle_compression(
     return audio
 
 
+_EQ_CHUNK_SAMPLES = 48000 * 300  # 5分ぶん。チャンク単位で処理し、総再生時間によらずメモリ使用量を一定に保つ
+
+
+def _chunked_sosfilt_stereo(sos: np.ndarray, data: np.ndarray, chunk_samples: int = _EQ_CHUNK_SAMPLES) -> np.ndarray:
+    """(channels, N)のステレオ音声へ、チャンク単位でsosfilt(片方向)を適用する。
+
+    scipy.signal.sosfiltfilt はゼロ位相化のため信号全体に対して前向き・後ろ向きの
+    2パスを行ったうえ、内部でfloat64へ暗黙に昇格するため、長時間BGMではそれだけで
+    数GB〜十数GBのピークメモリを消費してしまう（実測で確認済み）。
+    ここでは片方向のsosfiltに変更し、フィルタ状態(zi)をチャンク間で引き継ぐことで、
+    チャンク境界での不連続（クリック音）を避けつつ、メモリ使用量をチャンクサイズに
+    固定する。片方向フィルタによるわずかな群遅延は、この穏やかなシェルビングEQの
+    用途では聴感上問題にならない。
+    """
+    n_channels, n = data.shape
+    dtype = data.dtype
+    if n <= chunk_samples:
+        return sps.sosfilt(sos, data, axis=-1).astype(dtype, copy=False)
+
+    out = np.empty_like(data)
+    zi_proto = sps.sosfilt_zi(sos).astype(np.float64)  # (n_sections, 2)
+    zi = np.stack([zi_proto * data[ch, 0] for ch in range(n_channels)], axis=1)  # (n_sections, n_channels, 2)
+
+    for start in range(0, n, chunk_samples):
+        end = min(n, start + chunk_samples)
+        chunk_out, zi = sps.sosfilt(sos, data[:, start:end], axis=-1, zi=zi)
+        out[:, start:end] = chunk_out
+    return out.astype(dtype, copy=False)
+
+
 def eq_elderly_safe(
     audio: np.ndarray,
     sr: int,
@@ -122,7 +152,7 @@ def eq_elderly_safe(
 
     hp_cut = min(high_shelf_freq, nyq * 0.95) / nyq
     sos_hp = sps.butter(2, hp_cut, btype="highpass", output="sos")
-    high_part = sps.sosfiltfilt(sos_hp, audio, axis=-1)
+    high_part = _chunked_sosfilt_stereo(sos_hp, audio)
     gain_lin_high = 10 ** (high_shelf_gain_db / 20)
     high_part *= 1 - gain_lin_high
     audio -= high_part
@@ -130,7 +160,7 @@ def eq_elderly_safe(
 
     lp_cut = max(low_shelf_freq, 5.0) / nyq
     sos_lp = sps.butter(2, lp_cut, btype="lowpass", output="sos")
-    low_part = sps.sosfiltfilt(sos_lp, audio, axis=-1)
+    low_part = _chunked_sosfilt_stereo(sos_lp, audio)
     gain_lin_low = 10 ** (low_shelf_gain_db / 20)
     low_part *= 1 - gain_lin_low
     audio -= low_part
