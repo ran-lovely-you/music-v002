@@ -24,7 +24,11 @@ def _frame_rms(mono: np.ndarray, sr: int, frame_ms: float = 50.0) -> np.ndarray:
     return np.sqrt(np.mean(trimmed ** 2, axis=1))
 
 
-def analyze_audio(audio: np.ndarray, sr: int) -> AnalysisResult:
+def analyze_audio(audio: np.ndarray, sr: int, lufs_integrated: float | None = None) -> AnalysisResult:
+    """lufs_integrated: 呼び出し側で既にLUFSを測定済みの場合は渡すことで再計算を省略できる
+    （LUFS測定はブロック単位の処理のため長時間BGMでは数十秒かかることがあり、
+    process_master側で測定済みの値をそのまま使い回すことで無駄な再計算を避ける）。
+    """
     n = audio.shape[-1]
     duration_sec = n / sr if sr else 0.0
     mono = np.mean(audio, axis=0) if audio.ndim == 2 else audio
@@ -35,7 +39,7 @@ def analyze_audio(audio: np.ndarray, sr: int) -> AnalysisResult:
     rms = float(np.sqrt(np.mean(audio ** 2))) if audio.size else 0.0
     rms_dbfs = 20 * math.log10(rms) if rms > 1e-9 else -120.0
 
-    lufs = measure_lufs(audio, sr)
+    lufs = lufs_integrated if lufs_integrated is not None else measure_lufs(audio, sr)
 
     clip_mask = np.abs(audio) >= 0.999
     clipping_sample_count = int(np.sum(clip_mask))

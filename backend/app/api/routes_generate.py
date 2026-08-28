@@ -39,7 +39,7 @@ def _run_processing_pipeline(raw_audio: np.ndarray, raw_sr: int, req: GenerateRe
     del raw_audio  # 長時間BGMでは、不要になった参照を早めに手放してピークメモリを抑える
     processed = process_master(audio, sr)
     del audio
-    analysis = analyze_audio(processed.audio, processed.sr)
+    analysis = analyze_audio(processed.audio, processed.sr, lufs_integrated=processed.lufs_after)
     safety = run_safety_check(analysis)
     score = compute_score(analysis, safety, req)
     return _PipelineOutput(processed=processed, analysis=analysis, safety=safety, score=score)
