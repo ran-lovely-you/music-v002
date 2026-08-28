@@ -1,6 +1,10 @@
 # 認知機能サポートBGM AI - 起動スクリプト（Windows）
 # 初回は自動的にセットアップ（仮想環境作成・依存関係インストール）まで行います。
-$ErrorActionPreference = "Stop"
+#
+# 注意: $ErrorActionPreference は意図的に既定値(Continue)のままにしている。
+# "Stop" にすると、npm/pip が警告をstderrへ出力しただけでスクリプトが
+# 異常終了してしまう環境があるため（PowerShellのネイティブコマンド周りの挙動）。
+# 各ステップの成否は $LASTEXITCODE を明示的に確認する。
 
 $RootDir = Split-Path -Parent $PSScriptRoot
 Set-Location $RootDir
@@ -51,6 +55,10 @@ $VenvUvicorn = Join-Path $VenvDir "Scripts\uvicorn.exe"
 if (-not (Test-Path $VenvDir)) {
     Info "初回セットアップ: Python仮想環境を作成しています…"
     & $PyExe @PyBaseArgs -m venv $VenvDir
+    if ($LASTEXITCODE -ne 0) {
+        ErrorMsg "Python仮想環境の作成に失敗しました。"
+        Pause-AndExit
+    }
 }
 
 $DepsMarker = Join-Path $VenvDir ".deps_installed"
@@ -58,6 +66,10 @@ if (-not (Test-Path $DepsMarker)) {
     Info "初回セットアップ: 必要なライブラリをインストールしています…（数分かかることがあります）"
     & $VenvPython -m pip install --upgrade pip | Out-Null
     & $VenvPython -m pip install -r (Join-Path $BackendDir "requirements.txt")
+    if ($LASTEXITCODE -ne 0) {
+        ErrorMsg "ライブラリのインストールに失敗しました。インターネット接続をご確認のうえ、再度お試しください。"
+        Pause-AndExit
+    }
     New-Item -ItemType File -Path $DepsMarker | Out-Null
 }
 
@@ -72,10 +84,17 @@ if (-not (Test-Path $NodeModules)) {
     Info "初回セットアップ: フロントエンドのライブラリをインストールしています…"
     Push-Location $FrontendDir
     npm install
+    $npmExit = $LASTEXITCODE
     Pop-Location
+    if ($npmExit -ne 0) {
+        ErrorMsg "フロントエンドのライブラリインストールに失敗しました。インターネット接続をご確認のうえ、再度お試しください。"
+        Pause-AndExit
+    }
 }
 
-$ViteCmd = Join-Path $FrontendDir "node_modules\.bin\vite.cmd"
+# vite.cmd経由だと子プロセス(node)がプロセスツリーに隠れて終了処理が不安定になるため、
+# node + vite.js を直接起動してプロセスIDを正確に把握できるようにする。
+$ViteJs = Join-Path $FrontendDir "node_modules\vite\bin\vite.js"
 
 function Test-PortInUse($port) {
     try {
@@ -114,8 +133,8 @@ if (-not $AlreadyRunning) {
         -ArgumentList @("app.main:app", "--port", $BackendPort, "--log-level", "warning") `
         -WorkingDirectory $BackendDir -PassThru -WindowStyle Hidden
 
-    $FrontendProc = Start-Process -FilePath $ViteCmd `
-        -ArgumentList @("--port", $FrontendPort, "--strictPort") `
+    $FrontendProc = Start-Process -FilePath "node" `
+        -ArgumentList @($ViteJs, "--port", $FrontendPort, "--strictPort") `
         -WorkingDirectory $FrontendDir -PassThru -WindowStyle Hidden
 
     Info "起動を待っています…"
