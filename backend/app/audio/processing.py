@@ -202,11 +202,31 @@ def make_loopable(audio: np.ndarray, sr: int, crossfade_sec: float = 2.0) -> np.
     return audio
 
 
+_LUFS_LONG_DURATION_SEC = 600.0  # これを超える長さでは測定用に間引く
+_LUFS_MEASURE_SR = 12000  # 間引き後のサンプルレート
+
+
 def measure_lufs(audio: np.ndarray, sr: int) -> float | None:
-    """audio: [2, N] -> pyloudnorm には (N, channels) 形式で渡す。"""
+    """audio: [2, N] -> pyloudnorm には (N, channels) 形式で渡す。
+
+    pyloudnorm はK-weightingフィルタ処理のために内部で信号全体ぶんの
+    一時配列を確保する。120分クラスの長時間BGMをフル解像度のまま渡すと
+    ピークメモリが跳ね上がるため、10分を超える音声は測定専用に12kHzへ
+    間引いてから渡す（LUFSは知覚的な音量指標であり、間引きによる誤差は
+    「音響設計上の参考値」としての用途では無視できるレベルに収まる）。
+    実際に書き出す音声データそのものは元の解像度のまま変更しない。
+    """
     try:
-        meter = pyln.Meter(sr)
-        loudness = meter.integrated_loudness(audio.T)
+        duration_sec = audio.shape[-1] / sr if sr else 0.0
+        measure_audio = audio
+        measure_sr = sr
+        if duration_sec > _LUFS_LONG_DURATION_SEC and sr > _LUFS_MEASURE_SR:
+            g = math.gcd(sr, _LUFS_MEASURE_SR)
+            up, down = _LUFS_MEASURE_SR // g, sr // g
+            measure_audio = sps.resample_poly(audio, up, down, axis=-1).astype(np.float32)
+            measure_sr = _LUFS_MEASURE_SR
+        meter = pyln.Meter(measure_sr)
+        loudness = meter.integrated_loudness(measure_audio.T)
         return float(loudness) if np.isfinite(loudness) else None
     except Exception:
         return None
