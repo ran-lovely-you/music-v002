@@ -67,7 +67,10 @@ async def generate_bgm(req: GenerateRequest) -> GenerationResult:
 
     generation_id = uuid.uuid4().hex[:12]
     try:
-        preview_path = await asyncio.to_thread(export_audio, processed.audio, processed.sr, generation_id, "mp3")
+        # プレビュー再生は<audio>タグでの再生専用でffmpegを必要としないWAVを使う。
+        # MP3変換にはffmpegの外部インストールが必要なため、それが無い環境でも
+        # BGM生成自体（試聴・保存・WAV/FLAC書き出し）が失敗しないようにする。
+        preview_path = await asyncio.to_thread(export_audio, processed.audio, processed.sr, generation_id, "wav")
     except ExportError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
