@@ -23,6 +23,27 @@ function Pause-AndExit {
     exit 1
 }
 
+# --- wingetからの自動インストール ---
+function Update-SessionPath {
+    $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $env:Path = "$machinePath;$userPath"
+}
+
+function Install-ViaWinget($query, [switch]$ById) {
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        return $false
+    }
+    Info "$query を自動インストールしています…（数分かかることがあります）"
+    if ($ById) {
+        winget install --id $query -e --silent --accept-source-agreements --accept-package-agreements | Out-Null
+    } else {
+        winget install $query --silent --accept-source-agreements --accept-package-agreements | Out-Null
+    }
+    Update-SessionPath
+    return ($LASTEXITCODE -eq 0)
+}
+
 # --- 前提ツールの確認 ---
 $PyExe = $null
 $PyBaseArgs = @()
@@ -34,15 +55,31 @@ if (Get-Command py -ErrorAction SilentlyContinue) {
     $PyBaseArgs = @()
 }
 if (-not $PyExe) {
+    Install-ViaWinget -ById "Python.Python.3.11" | Out-Null
+    if (Get-Command py -ErrorAction SilentlyContinue) {
+        $PyExe = "py"
+        $PyBaseArgs = @("-3.11")
+    } elseif (Get-Command python -ErrorAction SilentlyContinue) {
+        $PyExe = "python"
+        $PyBaseArgs = @()
+    }
+}
+if (-not $PyExe) {
     ErrorMsg "Pythonが見つかりません。https://www.python.org/downloads/ からインストールするか、'winget install Python.Python.3.11' を実行してください。"
     Pause-AndExit
 }
 
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    Install-ViaWinget -ById "OpenJS.NodeJS.LTS" | Out-Null
+}
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
     ErrorMsg "Node.js/npmが見つかりません。https://nodejs.org/ からインストールするか、'winget install OpenJS.NodeJS.LTS' を実行してください。"
     Pause-AndExit
 }
 
+if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+    Install-ViaWinget "ffmpeg" | Out-Null
+}
 if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
     WarnMsg "ffmpegが見つかりません。MP3書き出しができません（WAV/FLACは利用できます）。'winget install ffmpeg' でインストールできます。"
 }
