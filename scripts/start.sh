@@ -22,6 +22,31 @@ pause_and_exit() {
   exit 1
 }
 
+OS_NAME="$(uname -s)"
+
+# --- Homebrew経由での自動インストール（Macのみ） ---
+ensure_homebrew() {
+  if command -v brew >/dev/null 2>&1; then
+    return 0
+  fi
+  warn "Homebrewが見つかりません。自動でインストールします…（数分かかることがあります。ログインパスワードを求められる場合があります）"
+  NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || return 1
+  for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+    if [ -x "$candidate" ]; then
+      eval "$("$candidate" shellenv)"
+      break
+    fi
+  done
+  command -v brew >/dev/null 2>&1
+}
+
+brew_install() {
+  local pkg="$1"
+  ensure_homebrew || return 1
+  info "${pkg} を自動インストールしています…"
+  brew install "$pkg"
+}
+
 # --- 前提ツールの確認 ---
 PYTHON_BIN=""
 for cand in python3.11 python3 python; do
@@ -30,16 +55,31 @@ for cand in python3.11 python3 python; do
     break
   fi
 done
+if [ -z "$PYTHON_BIN" ] && [ "$OS_NAME" = "Darwin" ]; then
+  brew_install python@3.11 || true
+  for cand in python3.11 python3 python; do
+    if command -v "$cand" >/dev/null 2>&1; then
+      PYTHON_BIN="$cand"
+      break
+    fi
+  done
+fi
 if [ -z "$PYTHON_BIN" ]; then
   error "Pythonが見つかりません。https://www.python.org/downloads/ からインストールするか、Macなら 'brew install python@3.11' を実行してください。"
   pause_and_exit
 fi
 
+if ! command -v npm >/dev/null 2>&1 && [ "$OS_NAME" = "Darwin" ]; then
+  brew_install node || true
+fi
 if ! command -v npm >/dev/null 2>&1; then
   error "Node.js/npmが見つかりません。https://nodejs.org/ からインストールするか、Macなら 'brew install node' を実行してください。"
   pause_and_exit
 fi
 
+if ! command -v ffmpeg >/dev/null 2>&1 && [ "$OS_NAME" = "Darwin" ]; then
+  brew_install ffmpeg || true
+fi
 if ! command -v ffmpeg >/dev/null 2>&1; then
   warn "ffmpegが見つかりません。MP3書き出しができません（WAV/FLACは利用できます）。Macなら 'brew install ffmpeg' でインストールできます。"
 fi
