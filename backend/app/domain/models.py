@@ -185,6 +185,18 @@ class ProjectRecord(BaseModel):
     safety: SafetyReport
     score: QualityScore
     audio_path: str
+    profile_id: Optional[str] = None
+    profile_name: Optional[str] = None
+    is_favorite: bool = False
+
+
+class Profile(BaseModel):
+    """家族プロフィール（パスワード等は持たない、名前と絵文字だけの簡易な区別）。"""
+
+    id: str
+    name: str
+    emoji: str
+    created_at: str
 
 
 class YoutubeMetadata(BaseModel):

@@ -16,6 +16,17 @@ export const ja = {
     disclaimer:
       "本ソフトウェアで作成する音楽は、認知機能サポート・リラックス・穏やかな生活環境づくりを目的とした音響コンテンツです。医学的な治療・予防効果を保証するものではありません。",
   },
+  profile: {
+    heading: "どなたが使いますか？",
+    lead: "ご自分の名前を選んでください。はじめての方は「新しいプロフィールを追加」から作成できます。",
+    addButton: "＋ 新しいプロフィールを追加",
+    nameLabel: "お名前（ニックネームでもOK）",
+    namePlaceholder: "例：おばあちゃん",
+    nameRequired: "お名前を入力してください。",
+    emojiLabel: "アイコンを選んでください",
+    createButton: "このプロフィールで始める",
+    switchButton: "プロフィールを切り替える",
+  },
   steps: {
     type: "BGMタイプ選択",
     mood: "雰囲気選択",
@@ -100,6 +111,11 @@ export const ja = {
     empty: "保存されたBGMはまだありません。",
     delete: "削除",
     backHome: "ホームに戻る",
+    filterMine: "自分の作品のみ",
+    filterAll: "家族みんなの作品",
+    favoriteOn: "★ お気に入り",
+    favoriteOff: "☆ お気に入りにする",
+    createdBy: "作成者",
   },
   common: {
     loading: "読み込み中…",

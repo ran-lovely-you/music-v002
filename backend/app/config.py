@@ -25,6 +25,19 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
+    # 家庭内LAN（Wi-Fi）にある他の端末（家族のスマホ・タブレット等）からの
+    # アクセスを許可するためのオリジン正規表現。インターネットには公開されない
+    # プライベートIPアドレス帯のみを対象にしている。
+    cors_origin_regex: str = (
+        r"^http://("
+        r"localhost"
+        r"|127\.0\.0\.1"
+        r"|192\.168\.\d{1,3}\.\d{1,3}"
+        r"|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+        r"|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}"
+        r"):\d+$"
+    )
+
     data_dir: str = "./data"
     output_dir: str = "./data/outputs"
     db_path: str = "./data/projects.db"

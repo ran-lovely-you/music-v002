@@ -2,6 +2,7 @@ import type {
   GenerateRequest,
   GenerationResult,
   OptionsResponse,
+  Profile,
   ProjectRecord,
   PromptSet,
   YoutubeMetadata,
@@ -64,19 +65,42 @@ export async function downloadExport(generationId: string, format: "wav" | "mp3"
   return await resp.blob();
 }
 
-export function saveProject(generationId: string, title: string): Promise<ProjectRecord> {
+export function saveProject(generationId: string, title: string, profileId: string | null): Promise<ProjectRecord> {
   return request<ProjectRecord>("/api/projects", {
     method: "POST",
-    body: JSON.stringify({ generation_id: generationId, title }),
+    body: JSON.stringify({ generation_id: generationId, title, profile_id: profileId }),
   });
 }
 
-export function listProjects(): Promise<ProjectRecord[]> {
-  return request<ProjectRecord[]>("/api/projects");
+export function listProjects(profileId?: string | null): Promise<ProjectRecord[]> {
+  const query = profileId ? `?profile_id=${encodeURIComponent(profileId)}` : "";
+  return request<ProjectRecord[]>(`/api/projects${query}`);
 }
 
 export function deleteProject(projectId: string): Promise<{ deleted: boolean }> {
   return request<{ deleted: boolean }>(`/api/projects/${projectId}`, { method: "DELETE" });
+}
+
+export function setProjectFavorite(projectId: string, favorite: boolean): Promise<ProjectRecord> {
+  return request<ProjectRecord>(`/api/projects/${projectId}/favorite`, {
+    method: "POST",
+    body: JSON.stringify({ favorite }),
+  });
+}
+
+export function listProfiles(): Promise<Profile[]> {
+  return request<Profile[]>("/api/profiles");
+}
+
+export function createProfile(name: string, emoji: string): Promise<Profile> {
+  return request<Profile>("/api/profiles", {
+    method: "POST",
+    body: JSON.stringify({ name, emoji }),
+  });
+}
+
+export function deleteProfile(profileId: string): Promise<{ deleted: boolean }> {
+  return request<{ deleted: boolean }>(`/api/profiles/${profileId}`, { method: "DELETE" });
 }
 
 export function getYoutubeMetadata(req: GenerateRequest): Promise<YoutubeMetadata> {
