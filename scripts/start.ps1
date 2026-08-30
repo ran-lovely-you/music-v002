@@ -28,7 +28,7 @@ $PyExe = $null
 $PyBaseArgs = @()
 if (Get-Command py -ErrorAction SilentlyContinue) {
     $PyExe = "py"
-    $PyBaseArgs = @("-3.11")
+    $PyBaseArgs = @("-3")
 } elseif (Get-Command python -ErrorAction SilentlyContinue) {
     $PyExe = "python"
     $PyBaseArgs = @()
