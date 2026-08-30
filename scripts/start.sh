@@ -136,7 +136,23 @@ else
   info "自動でブラウザを開けませんでした。手動で $URL を開いてください。"
 fi
 
+LAN_IP=$("$PYTHON_BIN" - <<'PY'
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+try:
+    s.connect(("8.8.8.8", 80))
+    print(s.getsockname()[0])
+except Exception:
+    print("")
+finally:
+    s.close()
+PY
+)
+
 info "認知機能サポートBGM AI が起動しました。"
+if [ -n "$LAN_IP" ]; then
+  info "ご家族の他のスマホ・タブレットからも、同じWi-Fiに接続していれば次のURLで使えます: http://$LAN_IP:$FRONTEND_PORT"
+fi
 info "終了するには、このウィンドウを閉じるか Ctrl+C を押してください。"
 
 if [ "$ALREADY_RUNNING" -eq 1 ]; then

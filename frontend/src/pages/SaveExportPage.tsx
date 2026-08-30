@@ -8,6 +8,7 @@ interface SaveExportPageProps {
   generationId: string;
   defaultTitle: string;
   request: GenerateRequest;
+  profileId: string | null;
   onBack: () => void;
   onDone: () => void;
 }
@@ -23,7 +24,7 @@ function triggerDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export function SaveExportPage({ generationId, defaultTitle, request, onBack, onDone }: SaveExportPageProps) {
+export function SaveExportPage({ generationId, defaultTitle, request, profileId, onBack, onDone }: SaveExportPageProps) {
   const [title, setTitle] = useState(defaultTitle);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -36,7 +37,7 @@ export function SaveExportPage({ generationId, defaultTitle, request, onBack, on
     setSaving(true);
     setError(null);
     try {
-      await saveProject(generationId, title || defaultTitle);
+      await saveProject(generationId, title || defaultTitle, profileId);
       setSaved(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : ja.common.error);

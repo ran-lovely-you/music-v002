@@ -9,7 +9,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import routes_export, routes_generate, routes_presets, routes_projects, routes_prompt, routes_youtube
+from app.api import (
+    routes_export,
+    routes_generate,
+    routes_presets,
+    routes_profiles,
+    routes_projects,
+    routes_prompt,
+    routes_youtube,
+)
 from app.config import settings
 from app.music_providers.base import ProviderError
 from app.storage.db import init_db
@@ -35,6 +43,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
+    allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -54,6 +63,7 @@ app.include_router(routes_prompt.router)
 app.include_router(routes_generate.router)
 app.include_router(routes_export.router)
 app.include_router(routes_projects.router)
+app.include_router(routes_profiles.router)
 app.include_router(routes_youtube.router)
 
 

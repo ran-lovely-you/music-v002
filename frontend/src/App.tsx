@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { generateBgm, generatePrompt, getOptions } from "./api/client";
+import { createProfile, generateBgm, generatePrompt, getOptions, listProfiles } from "./api/client";
 import { DurationTempoPage } from "./pages/DurationTempoPage";
 import { GeneratingPage } from "./pages/GeneratingPage";
 import { HomePage } from "./pages/HomePage";
@@ -7,6 +7,7 @@ import { InstrumentSelectPage } from "./pages/InstrumentSelectPage";
 import { MoodSelectPage } from "./pages/MoodSelectPage";
 import { NatureSelectPage } from "./pages/NatureSelectPage";
 import { PreviewPage } from "./pages/PreviewPage";
+import { ProfilePickerPage } from "./pages/ProfilePickerPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { PromptPreviewPage } from "./pages/PromptPreviewPage";
 import { SaveExportPage } from "./pages/SaveExportPage";
@@ -21,9 +22,12 @@ import type {
   Mood,
   NatureSound,
   OptionsResponse,
+  Profile,
   PromptSet,
   TempoLevel,
 } from "./types";
+
+const SELECTED_PROFILE_KEY = "bgm_selected_profile_id";
 
 type Step =
   | "home"
@@ -45,6 +49,11 @@ const INITIAL_TEMPO: TempoLevel = "gentle";
 export default function App() {
   const [options, setOptions] = useState<OptionsResponse | null>(null);
   const [optionsError, setOptionsError] = useState<string | null>(null);
+
+  const [profiles, setProfiles] = useState<Profile[] | null>(null);
+  const [profilesError, setProfilesError] = useState<string | null>(null);
+  const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
+  const [switchingProfile, setSwitchingProfile] = useState(false);
 
   const [step, setStep] = useState<Step>("home");
 
@@ -69,6 +78,29 @@ export default function App() {
       .then(setOptions)
       .catch((e) => setOptionsError(e instanceof Error ? e.message : ja.common.error));
   }, []);
+
+  useEffect(() => {
+    listProfiles()
+      .then((list) => {
+        setProfiles(list);
+        const savedId = localStorage.getItem(SELECTED_PROFILE_KEY);
+        const saved = savedId ? list.find((p) => p.id === savedId) : undefined;
+        if (saved) setCurrentProfile(saved);
+      })
+      .catch((e) => setProfilesError(e instanceof Error ? e.message : ja.common.error));
+  }, []);
+
+  const handleSelectProfile = (profile: Profile) => {
+    localStorage.setItem(SELECTED_PROFILE_KEY, profile.id);
+    setCurrentProfile(profile);
+    setSwitchingProfile(false);
+  };
+
+  const handleCreateProfile = async (name: string, emoji: string) => {
+    const profile = await createProfile(name, emoji);
+    setProfiles((prev) => [...(prev ?? []), profile]);
+    handleSelectProfile(profile);
+  };
 
   const buildRequest = (): GenerateRequest => ({
     bgm_type: bgmType ?? "daytime",
@@ -158,12 +190,40 @@ export default function App() {
     );
   }
 
+  if (!currentProfile || switchingProfile) {
+    return (
+      <>
+        <header className="app-header">
+          <h1>{ja.appTitle}</h1>
+          <p>{ja.appSubtitle}</p>
+        </header>
+        <main className="app-main">
+          <ProfilePickerPage
+            profiles={profiles ?? []}
+            loading={profiles === null}
+            error={profilesError}
+            onSelect={handleSelectProfile}
+            onCreate={handleCreateProfile}
+          />
+        </main>
+      </>
+    );
+  }
+
   return (
     <>
       <header className="app-header">
         <h1>{ja.appTitle}</h1>
         <p>{ja.appSubtitle}</p>
       </header>
+      <div className="active-profile-bar">
+        <span>
+          {currentProfile.emoji} {currentProfile.name}
+        </span>
+        <button type="button" onClick={() => setSwitchingProfile(true)}>
+          {ja.profile.switchButton}
+        </button>
+      </div>
       <main className="app-main">
         {step === "home" && (
           <HomePage onStart={() => setStep("type")} onShowProjects={() => setStep("projects")} />
@@ -263,12 +323,13 @@ export default function App() {
             generationId={generationResult.generation_id}
             defaultTitle={`${options.bgm_types.find((t) => t.key === bgmType)?.label ?? "BGM"}_${generationResult.generation_id}`}
             request={buildRequest()}
+            profileId={currentProfile.id}
             onBack={() => setStep("preview")}
             onDone={resetAll}
           />
         )}
 
-        {step === "projects" && <ProjectsPage onBack={() => setStep("home")} />}
+        {step === "projects" && <ProjectsPage currentProfile={currentProfile} onBack={() => setStep("home")} />}
       </main>
     </>
   );

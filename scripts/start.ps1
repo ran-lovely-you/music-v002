@@ -155,7 +155,14 @@ $Url = "http://localhost:$FrontendPort"
 Info "ブラウザで開きます: $Url"
 Start-Process $Url | Out-Null
 
+$LanIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" } |
+    Select-Object -First 1).IPAddress
+
 Info "認知機能サポートBGM AI が起動しました。"
+if ($LanIp) {
+    Info "ご家族の他のスマホ・タブレットからも、同じWi-Fiに接続していれば次のURLで使えます: http://${LanIp}:$FrontendPort"
+}
 Info "終了するには、このウィンドウを閉じるか Ctrl+C を押してください。"
 
 if ($AlreadyRunning) {

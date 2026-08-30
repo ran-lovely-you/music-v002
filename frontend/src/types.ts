@@ -157,6 +157,16 @@ export interface ProjectRecord {
   safety: SafetyReport;
   score: QualityScore;
   audio_path: string;
+  profile_id: string | null;
+  profile_name: string | null;
+  is_favorite: boolean;
+}
+
+export interface Profile {
+  id: string;
+  name: string;
+  emoji: string;
+  created_at: string;
 }
 
 export interface YoutubeMetadata {

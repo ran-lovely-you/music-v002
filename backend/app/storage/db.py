@@ -22,12 +22,35 @@ CREATE TABLE IF NOT EXISTS projects (
     score TEXT NOT NULL,
     audio_path TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS profiles (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    emoji TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
+
+# 家族プロフィール・お気に入り機能追加時の後方互換マイグレーション。
+# 既存の projects.db（これらの列を持たない）でも起動時に自動で列を追加する。
+_PROJECT_COLUMN_MIGRATIONS = [
+    ("profile_id", "TEXT"),
+    ("profile_name", "TEXT"),
+    ("is_favorite", "INTEGER NOT NULL DEFAULT 0"),
+]
+
+
+def _migrate_projects_table(conn: sqlite3.Connection) -> None:
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(projects)")}
+    for column, ddl_type in _PROJECT_COLUMN_MIGRATIONS:
+        if column not in existing:
+            conn.execute(f"ALTER TABLE projects ADD COLUMN {column} {ddl_type}")
 
 
 def init_db() -> None:
     with get_connection() as conn:
         conn.executescript(SCHEMA)
+        _migrate_projects_table(conn)
         conn.commit()
 
 

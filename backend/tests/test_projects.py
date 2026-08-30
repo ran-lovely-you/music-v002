@@ -4,7 +4,7 @@ from app.audio.safety_check import run_safety_check
 from app.audio.scoring import compute_score
 from app.domain.models import AnalysisResult, BgmType, GenerateRequest, Instrument, ProjectRecord, TempoLevel
 from app.prompt.generator import generate_prompt_set
-from app.storage.project_repo import delete_project, get_project, list_projects, save_project
+from app.storage.project_repo import delete_project, get_project, list_projects, save_project, set_favorite
 
 
 def _sample_record() -> ProjectRecord:
@@ -76,3 +76,31 @@ def test_delete_project_removes_it():
 
 def test_get_missing_project_returns_none():
     assert get_project("does-not-exist") is None
+
+
+def test_set_favorite_toggles_flag():
+    record = _sample_record()
+    save_project(record)
+    updated = set_favorite(record.id, True)
+    assert updated is not None
+    assert updated.is_favorite is True
+    fetched = get_project(record.id)
+    assert fetched is not None
+    assert fetched.is_favorite is True
+    delete_project(record.id)
+
+
+def test_set_favorite_missing_project_returns_none():
+    assert set_favorite("does-not-exist", True) is None
+
+
+def test_list_projects_filters_by_profile():
+    record = _sample_record()
+    record.profile_id = "fam-1"
+    record.profile_name = "おばあちゃん"
+    save_project(record)
+    matching = list_projects(profile_id="fam-1")
+    other = list_projects(profile_id="fam-2")
+    assert any(p.id == record.id for p in matching)
+    assert not any(p.id == record.id for p in other)
+    delete_project(record.id)
